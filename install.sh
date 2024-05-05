@@ -47,7 +47,6 @@ if [ ! -d "$REPO_BASE" ]; then
   git clone "$REPO_URL"
 fi
 
-git clone https://github.com/immich-app/immich $REPO_BASE
 cd $REPO_BASE
 git reset --hard $REPO_TAG
 
