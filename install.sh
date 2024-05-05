@@ -86,12 +86,13 @@ python3 -m venv $IMMICH_MACHINE_LEARNING_PATH/venv
   . $IMMICH_MACHINE_LEARNING_PATH/venv/bin/activate
   pip3 install poetry
   cd machine-learning
+  export POETRY_PYPI_MIRROR_URL=https://mirror.sjtu.edu.cn/pypi/web/simple
   if false; then # Set this to true to force poetry update
     # Allow Python 3.12 (e.g., Ubuntu 24.04)
     sed -i -e 's/<3.12/<4/g' pyproject.toml
     poetry update
   fi
-  poetry install --no-root --with dev --with gpu
+  poetry install --no-root --with dev --with cuda
   cd ..
 )
 cp -a machine-learning/ann machine-learning/start.sh machine-learning/app $IMMICH_MACHINE_LEARNING_PATH/
