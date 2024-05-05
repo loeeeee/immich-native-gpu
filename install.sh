@@ -2,10 +2,10 @@
 
 set -xeuo pipefail
 
-TAG=v1.103.1
+REPO_TAG=v1.103.1
 
-IMMICH_PATH=/var/lib/immich
-APP=$IMMICH_PATH/app
+IMMICH_INSTALL_PATH=/var/lib/immich
+IMMICH_INSTALL_PATH_APP=$IMMICH_INSTALL_PATH/app
 
 if [[ "$USER" != "immich" ]]; then
   # Disable systemd services, if installed
@@ -18,8 +18,8 @@ if [[ "$USER" != "immich" ]]; then
     done
   ) || true
 
-  mkdir -p $IMMICH_PATH
-  chown immich:immich $IMMICH_PATH
+  mkdir -p $IMMICH_INSTALL_PATH
+  chown immich:immich $IMMICH_INSTALL_PATH
 
   mkdir -p /var/log/immich
   chown immich:immich /var/log/immich
@@ -30,20 +30,28 @@ fi
 
 BASEDIR=$(dirname "$0")
 
-rm -rf $APP
-mkdir -p $APP
+rm -rf $IMMICH_INSTALL_PATH_APP
+mkdir -p $IMMICH_INSTALL_PATH_APP
 
 # Wipe npm, pypoetry, etc
-# This expects immich user's home directory to be on $IMMICH_PATH/home
-rm -rf $IMMICH_PATH/home
-mkdir -p $IMMICH_PATH/home
+# This expects immich user's home directory to be on $IMMICH_INSTALL_PATH/home
+rm -rf $IMMICH_INSTALL_PATH/home
+mkdir -p $IMMICH_INSTALL_PATH/home
 
-TMP=/tmp/immich-$(uuidgen)
-git clone https://github.com/immich-app/immich $TMP
-cd $TMP
-git reset --hard $TAG
 
-# immich-server
+# Clone repo
+REPO_BASE=/tmp/immich
+REPO_URL="https://github.com/immich-app/immich"
+
+if [ ! -d "$REPO_BASE" ]; then
+  git clone "$REPO_URL"
+fi
+
+git clone https://github.com/immich-app/immich $REPO_BASE
+cd $REPO_BASE
+git reset --hard $REPO_TAG
+
+# Install immich-server
 cd server
 npm ci
 npm run build
@@ -60,21 +68,22 @@ npm ci
 npm run build
 cd -
 
-cp -a server/node_modules server/dist server/bin $APP/
-cp -a web/build $APP/www
-cp -a server/resources server/package.json server/package-lock.json $APP/
-cp -a server/start*.sh $APP/
-cp -a LICENSE $APP/
-cd $APP
-npm cache clean --force
+cp -a server/node_modules server/dist server/bin $IMMICH_INSTALL_PATH_APP/
+cp -a web/build $IMMICH_INSTALL_PATH_APP/www
+cp -a server/resources server/package.json server/package-lock.json $IMMICH_INSTALL_PATH_APP/
+cp -a server/start*.sh $IMMICH_INSTALL_PATH_APP/
+cp -a LICENSE $IMMICH_INSTALL_PATH_APP/
+cd $IMMICH_INSTALL_PATH_APP
+# npm cache clean --force
 cd -
 
 # immich-machine-learning
-mkdir -p $APP/machine-learning
-python3 -m venv $APP/machine-learning/venv
+IMMICH_MACHINE_LEARNING_PATH=$IMMICH_INSTALL_PATH_APP/machine-learning
+mkdir -p $IMMICH_MACHINE_LEARNING_PATH
+python3 -m venv $IMMICH_MACHINE_LEARNING_PATH/venv
 (
   # Initiate subshell to setup venv
-  . $APP/machine-learning/venv/bin/activate
+  . $IMMICH_MACHINE_LEARNING_PATH/venv/bin/activate
   pip3 install poetry
   cd machine-learning
   if false; then # Set this to true to force poetry update
@@ -82,50 +91,50 @@ python3 -m venv $APP/machine-learning/venv
     sed -i -e 's/<3.12/<4/g' pyproject.toml
     poetry update
   fi
-  poetry install --no-root --with dev --with cpu
+  poetry install --no-root --with dev --with gpu
   cd ..
 )
-cp -a machine-learning/ann machine-learning/start.sh machine-learning/app $APP/machine-learning/
+cp -a machine-learning/ann machine-learning/start.sh machine-learning/app $IMMICH_MACHINE_LEARNING_PATH/
 
 # Replace /usr/src
-cd $APP
-grep -Rl /usr/src | xargs -n1 sed -i -e "s@/usr/src@$IMMICH_PATH@g"
-ln -sf $IMMICH_PATH/app/resources $IMMICH_PATH/
-mkdir -p $IMMICH_PATH/cache
-sed -i -e "s@\"/cache\"@\"$IMMICH_PATH/cache\"@g" $APP/machine-learning/app/config.py
+cd $IMMICH_INSTALL_PATH_APP
+grep -Rl /usr/src | xargs -n1 sed -i -e "s@/usr/src@$IMMICH_INSTALL_PATH@g"
+ln -sf $IMMICH_INSTALL_PATH/app/resources $IMMICH_INSTALL_PATH/
+mkdir -p $IMMICH_INSTALL_PATH/cache
+sed -i -e "s@\"/cache\"@\"$IMMICH_INSTALL_PATH/cache\"@g" $IMMICH_MACHINE_LEARNING_PATH/app/config.py
 
 # Install sharp
-cd $APP
+cd $IMMICH_INSTALL_PATH_APP
 npm install sharp
 
 # Setup upload directory
-mkdir -p $IMMICH_PATH/upload
-ln -s $IMMICH_PATH/upload $APP/
-ln -s $IMMICH_PATH/upload $APP/machine-learning/
+mkdir -p $IMMICH_INSTALL_PATH/upload
+ln -s $IMMICH_INSTALL_PATH/upload $IMMICH_INSTALL_PATH_APP/
+ln -s $IMMICH_INSTALL_PATH/upload $IMMICH_MACHINE_LEARNING_PATH/
 
 # Use 127.0.0.1
-sed -i -e "s@app.listen(port)@app.listen(port, '127.0.0.1')@g" $APP/dist/main.js
+# sed -i -e "s@app.listen(port)@app.listen(port, '127.0.0.1')@g" $IMMICH_INSTALL_PATH_APP/dist/main.js
 
 # Custom start.sh script
-cat <<EOF > $APP/start.sh
+cat <<EOF > $IMMICH_INSTALL_PATH_APP/start.sh
 #!/bin/bash
 
 set -a
-. $IMMICH_PATH/env
+. $IMMICH_INSTALL_PATH/env
 set +a
 
-cd $APP
-exec node $APP/dist/main "\$@"
+cd $IMMICH_INSTALL_PATH_APP
+exec node $IMMICH_INSTALL_PATH_APP/dist/main "\$@"
 EOF
 
-cat <<EOF > $APP/machine-learning/start.sh
+cat <<EOF > $IMMICH_MACHINE_LEARNING_PATH/start.sh
 #!/bin/bash
 
 set -a
-. $IMMICH_PATH/env
+. $IMMICH_INSTALL_PATH/env
 set +a
 
-cd $APP/machine-learning
+cd $IMMICH_MACHINE_LEARNING_PATH
 . venv/bin/activate
 
 : "\${MACHINE_LEARNING_HOST:=127.0.0.1}"
@@ -143,7 +152,7 @@ exec gunicorn app.main:app \
 EOF
 
 # Cleanup
-rm -rf $TMP
+# rm -rf $REPO_BASE
 
 echo
 echo "Done. Please install the systemd services to start using Immich."
